@@ -4,21 +4,21 @@
 	import Modal from '$lib/Modal/Index.svelte';
 	import ConfigButtons from '$lib/Modal/ConfigButtons.svelte';
 	import CodeEditor from '$lib/Components/CodeEditor.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import Ripple from 'svelte-ripple';
 
 	export let isOpen: boolean;
 	export let sel: any; // Das aktuell ausgewählte Element/Objekt
 
 	let cardTagName = sel?.card_tag || ''; // Initialwert aus sel.card_tag oder leer
-	let cardConfigString = sel?.card_config ? JSON.stringify(sel.card_config, null, 2) : '{}\n';
+	let cardConfigString = sel?.card_config ? JSON.stringify(sel.card_config, null, 2) : '';
 	let parseError = '';
 	let editorComponent: CodeEditor; // Für den Fokus
 	let inputElement: HTMLInputElement;
 
 	onMount(() => {
-		console.log('CustomCardConfig - onMount - sel:', JSON.parse(JSON.stringify(sel)));
-		console.log('CustomCardConfig - onMount - $editMode:', $editMode);
+		// console.log('CustomCardConfig - onMount - sel:', JSON.parse(JSON.stringify(sel))); 
+		// console.log('CustomCardConfig - onMount - $editMode:', $editMode);
 		if (isOpen && inputElement && !editorComponent) {
 			setTimeout(() => inputElement.focus(), 0);
 		}
@@ -26,22 +26,80 @@
 
 	function saveAndClose() {
 		parseError = '';
-		if (sel) {
-			sel.card_tag = cardTagName.trim();
-			if (!sel.card_tag) {
+		if (sel && sel.id) {
+			let newCardConfig;
+			
+			// DEBUG: Was ist der Inhalt von cardConfigString direkt vor dem Parsen?
+			console.log('[CustomCardConfig.svelte] Value of cardConfigString BEFORE JSON.parse:', cardConfigString);
+
+			try {
+				newCardConfig = cardConfigString.trim() === '' ? {} : JSON.parse(cardConfigString);
+				console.log('[CustomCardConfig.svelte] Parsed newCardConfig from editor:', newCardConfig);
+			} catch (e: any) {
+				parseError = `Invalid JSON: ${e.message}`;
+				return;
+			}
+
+			const newCardTagName = cardTagName.trim();
+			if (!newCardTagName) {
 				parseError = 'Card Tag Name cannot be empty.';
 				return;
 			}
-			try {
-				sel.card_config = JSON.parse(cardConfigString);
-			} catch (e: any) {
-				parseError = `Invalid JSON: ${e.message}`;
-				return; 
+
+			let dashboardCopy = JSON.parse(JSON.stringify($dashboard));
+			let itemUpdated = false;
+			let foundItemForUpdate: any = null;
+
+			function findAndUpdateItem(currentItems: any[]) {
+				if (!currentItems) return;
+				for (let i = 0; i < currentItems.length; i++) {
+					if (currentItems[i].id === sel.id) {
+						console.log('[CustomCardConfig.svelte] Item found in dashboardCopy. Current card_tag:', currentItems[i].card_tag, 'Current card_config:', currentItems[i].card_config); // Logge direkt das Objekt
+						currentItems[i].card_tag = newCardTagName;
+						currentItems[i].card_config = newCardConfig; 
+						itemUpdated = true;
+						foundItemForUpdate = currentItems[i];
+						console.log('[CustomCardConfig.svelte] Item updated in dashboardCopy. New card_tag:', currentItems[i].card_tag, 'New card_config:', currentItems[i].card_config); // Logge direkt das Objekt
+						return;
+					}
+				}
 			}
-			$dashboard = $dashboard;
-			$record();
+
+			dashboardCopy.views.forEach((view: any) => {
+				if (itemUpdated) return;
+				view.sections?.forEach((section: any) => {
+					if (itemUpdated) return;
+					findAndUpdateItem(section.items);
+					if (!itemUpdated && section.sections) {
+						section.sections.forEach((subSection: any) => {
+							if (itemUpdated) return;
+							findAndUpdateItem(subSection.items);
+						});
+					}
+				});
+			});
+
+			if (itemUpdated) {
+				console.log('[CustomCardConfig.svelte] itemUpdated is true. Assigning dashboardCopy to $dashboard.');
+				$dashboard = dashboardCopy;
+			} else {
+				console.warn('[CustomCardConfig.svelte] Could not find item with ID ' + sel.id + ' in dashboard to update. $dashboard remains unchanged.');
+			}
+
+			tick().then(() => {
+				$record(); 
+				// Für das Logging hier ist JSON.parse(JSON.stringify()) sicherer, um den aktuellen Zustand zu erfassen.
+				console.log('[CustomCardConfig.svelte] $dashboard state AFTER $record (after tick):', JSON.parse(JSON.stringify($dashboard)));
+				if (foundItemForUpdate) {
+					console.log('[CustomCardConfig.svelte] card_config for item ID ' + sel.id + ' in $dashboard (from foundItemForUpdate) after $record:', JSON.parse(JSON.stringify(foundItemForUpdate.card_config)));
+				}
+				closeModal();
+			});
+
+		} else {
+			console.error('[CustomCardConfig.svelte] \'sel\' or \'sel.id\' is undefined in saveAndClose.');
+			closeModal();
 		}
-		closeModal();
 	}
 
 	function removeThisItem() {
@@ -99,7 +157,8 @@
 			<label for="card-config-json">{$lang('custom_card_config_json') || 'Card Configuration (JSON)'}</label>
 			<CodeEditor
 				bind:this={editorComponent}
-				bind:value={cardConfigString}
+				value={cardConfigString}
+				on:change={(e) => cardConfigString = e.detail}
 				type="json"
 				placeholder={`{ 
   "type": "custom:power-flow-card-plus",

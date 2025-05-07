@@ -14,6 +14,7 @@
 		lang,
 		services as hassServices
 	} from '$lib/Stores';
+	import { tick } from 'svelte';
 
 	export let item: any;
 	export let sectionName: string | undefined = undefined;
@@ -35,6 +36,32 @@
 			if (element) element.hass = hassProp;
 		}
 	};
+
+	let cardElement: HTMLElement & { setConfig?: (config: any) => void, config?: any };
+
+	// Reaktiver Block, der ausgeführt wird, wenn sich relevante Props ändern
+	$: if (item?.type === 'custom_card' && item?.card_tag && cardElement && item?.card_config) {
+		// Erstelle eine tiefe Kopie von item.card_config, um Seiteneffekte zu vermeiden
+		const configCopy = JSON.parse(JSON.stringify(item.card_config));
+		tick().then(() => { 
+			if (cardElement && typeof cardElement.setConfig === 'function') {
+				console.log("[Content.svelte] Calling setConfig on custom card with:", configCopy);
+				try {
+					cardElement.setConfig(configCopy);
+				} catch (e) {
+					console.error("[Content.svelte] Error calling setConfig on custom card:", e, "Element:", cardElement, "Config:", configCopy);
+				}
+			} else if (cardElement) {
+				// Fallback: Wenn setConfig nicht existiert, versuche config direkt zu setzen (obwohl dies oft durch Props passiert)
+				console.warn("[Content.svelte] Custom card does not have a setConfig method. Attempting to set .config property. Current element.config:", cardElement.config);
+				try {
+					cardElement.config = configCopy;
+				} catch (e) {
+					console.error("[Content.svelte] Error setting .config property on custom card:", e, "Element:", cardElement, "Config:", configCopy);
+				}
+			}
+		});
+	}
 
 </script>
 
@@ -58,23 +85,17 @@
 	<!-- NEU: Custom Card Rendering -->
 {:else if item?.type === 'custom_card' && item?.card_tag}
 	<div class="custom-card-wrapper">
-		{@debug item, hassProp} <!-- Temporäres Svelte @debug für Live-Inspektion -->
 		{(() => {
-		  console.log("[Content.svelte] Rendering custom card:", item.card_tag);
-		  console.log("[Content.svelte] item.card_config:", JSON.parse(JSON.stringify(item.card_config)));
-		  console.log("[Content.svelte] hassProp.states relevant for power-flow-card-plus:", 
-		    JSON.parse(JSON.stringify({
-		      gridConsumption: hassProp.states && hassProp.states['sensor.stromzahler_gesamtverbrauch'],
-		      gridProduction: hassProp.states && hassProp.states['sensor.stromzahler_einspeisung'],
-		      homeConsumption: hassProp.states && hassProp.states['sensor.aktueller_stromverbrauch']
-		    })));
-		  console.log("[Content.svelte] Full hassProp.states available:", hassProp.states && Object.keys(hassProp.states).length);
-		  console.log("[Content.svelte] Full hassProp object:", hassProp);
-		  return ''; // Gibt einen leeren String zurück, damit Svelte einen gültigen Ausdruck hat
+		  // Die Debug-Logs können hier bleiben oder reduziert werden, wenn der Fehler gefunden ist
+		  // console.log("[Content.svelte] Rendering custom card:", item.card_tag);
+		  // let configToLog = {};
+		  // try { configToLog = JSON.parse(JSON.stringify(item.card_config)); } catch(e) { configToLog = { error: "Could not stringify card_config" }; }
+		  // console.log("[Content.svelte] item.card_config to be passed:", configToLog);
+		  return ''; 
 		})()}
 		<svelte:element
 			this={item.card_tag}
-			{...item.card_config} 
+			bind:this={cardElement} 
 			hass={hassProp}
 		></svelte:element>
 	</div>
