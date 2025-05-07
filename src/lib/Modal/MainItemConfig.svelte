@@ -20,6 +20,8 @@
 	import ConfigButtons from '$lib/Modal/ConfigButtons.svelte';
 	import Ripple from 'svelte-ripple';
 	import PictureElements from '$lib/Main/PictureElements.svelte';
+	import CustomCardPreview from '$lib/Main/CustomCardPreview.svelte';
+	import Template from '$lib/Main/Template.svelte';
 
 	export let isOpen: boolean;
 	export let sel: any;
@@ -123,6 +125,23 @@
 				demo: $demo.media_player,
 				sel
 			}
+		},
+		{
+			id: 'custom_card',
+			type: $lang('custom_card') || 'Custom Card',
+			component: CustomCardPreview,
+			props: {
+				sel
+			}
+		},
+		{
+			id: 'template',
+			type: $lang('template') || 'Template',
+			component: Template,
+			props: {
+				sel: { template: '{{ states("sun.sun") }}' },
+				demo: true
+			}
 		}
 	];
 
@@ -167,6 +186,12 @@
 
 			case 'empty':
 				openModal(() => import('$lib/Modal/EmptyConfig.svelte'), { sel });
+				break;
+			case 'custom_card':
+				openModal(() => import('$lib/Modal/CustomCardConfig.svelte'), { sel });
+				break;
+			case 'template':
+				openModal(() => import('$lib/Modal/TemplateConfig.svelte'), { sel });
 				break;
 			default:
 				openModal(() => import('$lib/Modal/MainItemConfig.svelte'), { sel });

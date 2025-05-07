@@ -6,11 +6,36 @@
 	import Camera from '$lib/Main/Camera.svelte';
 	import Configure from '$lib/Main/Configure.svelte';
 	import Empty from '$lib/Main/Empty.svelte';
+	import Template from '$lib/Main/Template.svelte';
+	import {
+		config as hassConfig,
+		states as hassStates,
+		connection,
+		lang,
+		services as hassServices
+	} from '$lib/Stores';
 
 	export let item: any;
 	export let sectionName: string | undefined = undefined;
 
 	const large = ['conditional_media', 'picture_elements', 'camera'];
+
+	// Definiere das hassProp Objekt hier reaktiv
+	$: hassProp = {
+		config: $hassConfig,
+		states: $hassStates,
+		connection: $connection,
+		services: $hassServices,
+		user: $connection?.user,
+		callService: ($connection && typeof $connection.callService === 'function') 
+					 ? $connection.callService.bind($connection) 
+					 : undefined,
+		localize: $lang,
+		provideHass: (element: any) => {
+			if (element) element.hass = hassProp;
+		}
+	};
+
 </script>
 
 {#if item?.[SHADOW_ITEM_MARKER_PROPERTY_NAME] && large.includes(item?.type)}
@@ -29,6 +54,26 @@
 	<Camera sel={item} responsive={false} muted={true} controls={false} />
 {:else if item?.type === 'empty'}
 	<Empty sel={item} />
+
+	<!-- NEU: Custom Card Rendering -->
+{:else if item?.type === 'custom_card' && item?.card_tag}
+	<div class="custom-card-wrapper">
+		<svelte:element
+			this={item.card_tag}
+			{...item.card_config} 
+			hass={hassProp}
+		></svelte:element>
+	</div>
+{:else if item?.type === 'custom_card' && !item?.card_tag}
+	<div class="custom-card-error">
+		<p>Custom Card Error: card_tag is not defined.</p>
+		<p>Please configure the card and set a valid tag name.</p>
+	</div>
+
+	<!-- NEU: Template Card Rendering -->
+{:else if item?.type === 'template'}
+	<Template sel={item} />
+
 {:else}
 	<!-- if types are changed internally, don't break ui -->
 	<Configure sel={{ id: item?.id }} />
@@ -45,5 +90,29 @@
 		background: rgba(0, 0, 0, 0.125);
 		margin: 0;
 		border-radius: 0.65rem;
+	}
+
+	.custom-card-wrapper {
+		height: 100%;
+		display: flex; 
+		align-items: stretch; 
+	}
+
+	.custom-card-wrapper > :global(*) {
+    width: 100%; 
+  }
+
+	.custom-card-error {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		height: 100%;
+		padding: 1rem;
+		text-align: center;
+		background-color: rgba(255, 0, 0, 0.1);
+		border: 1px dashed red;
+		border-radius: 0.65rem;
+		color: red;
 	}
 </style>
